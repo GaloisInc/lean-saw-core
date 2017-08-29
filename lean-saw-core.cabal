@@ -1,0 +1,38 @@
+Name:              lean-saw-core
+Version:           0.1
+Author:            Galois, Inc.
+License:           BSD3
+License-file:      LICENSE
+Maintainer:        huffman@galois.com
+Copyright:         (c) 2017 Galois Inc.
+Build-type:        Simple
+cabal-version:     >= 1.8
+Category:          Formal Methods
+Synopsis:          Representing Lean in SAWCore
+Description:
+  Translate Lean expressions into SAWCore terms, which can then
+  be analyzed by various backend proof systems.
+
+extra-source-files:
+    -- saw/Lean.sawcore
+
+library
+  build-depends:
+    aig,
+    array,
+    base,
+    base-compat,
+    containers,
+    data-inttrie,
+    integer-gmp,
+    lean-bindings,
+    mtl,
+    saw-core,
+    saw-core-aig,
+    saw-core-sbv,
+    sbv,
+    vector
+  hs-source-dirs: src
+  exposed-modules:
+     Verifier.SAW.Lean
+  GHC-options: -Wall -Werror
