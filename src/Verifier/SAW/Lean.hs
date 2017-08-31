@@ -20,9 +20,9 @@ import qualified Data.Char as Char
 import Data.Map (Map)
 import qualified Data.Map as Map
 --import Data.Word (Word32)
---import Control.Monad (foldM)
 import Control.Monad.State
 
+import Verifier.SAW.Recognizer
 import Verifier.SAW.SharedTerm
 --import Verifier.SAW.Constant (scConstant)
 import Verifier.SAW.TypedAST (preludeName, mkSort)
@@ -43,7 +43,8 @@ lean_extract sc modname name =
        case Lean.envLookupDecl (parseName name) env of
          Nothing -> fail "lean_extract: name not found"
          Just decl -> return decl
-     t <- evalStateT (importDecl sc env [] decl) Map.empty
+     table <- sequenceA (globals sc)
+     t <- evalStateT (importDecl sc env [] decl) table
      putStrLn "Result term:"
      putStrLn (scPrettyTerm defaultPPOpts t)
      return t
@@ -76,6 +77,8 @@ importDecl sc env tys decl =
   case declBody decl of
     Nothing ->
       do t <- importExpr sc env tys (Lean.declType decl)
+         lift $ putStrLn $ "Unknown Global " ++ show (Lean.nameToString name)
+         lift $ putStrLn $ " : " ++ (scPrettyTerm defaultPPOpts t)
          t' <- lift $ scFreshGlobal sc (Lean.nameToString name) t
          modify (Map.insert name t')
          return t'
@@ -84,7 +87,7 @@ importDecl sc env tys decl =
          let tc = Lean.typechecker env
          ty <- importExpr sc env tys (Lean.inferType tc e)
          --t' <- lift $ scConstant sc (Lean.nameToString name) t
-         lift $ putStrLn $ "Constant " ++ show (Lean.nameToString name)
+         lift $ putStrLn $ "Defining Constant " ++ show (Lean.nameToString name)
          lift $ putStrLn $ " : " ++ (scPrettyTerm defaultPPOpts ty)
          lift $ putStrLn $ " = " ++ (scPrettyTerm defaultPPOpts t)
          t' <- lift $ scTermF sc (Constant (Lean.nameToString name) t ty)
@@ -92,6 +95,7 @@ importDecl sc env tys decl =
          return t'
   where
     name = Lean.declName decl
+
 importExpr ::
     SharedContext ->
     Lean.Env ->
@@ -129,21 +133,95 @@ importExpr sc env tys expr = do
     Lean.ExprPi _bk name e1 e2 ->
       do t1 <- importExpr sc env tys e1
          t2 <- importExpr sc env (t1 : tys) e2
-         lift $ scPi sc (Lean.nameToString name) t1 t2
+         let name' = if odd (looseVars t2) then Lean.nameToString name else "_"
+         lift $ scPi sc name' t1 t2
     Lean.ExprMacro mdef exprs ->
-      do lift $ putStrLn "importExpr ExprMacro"
-         lift $ putStrLn (show mdef)
-         lift $ putStrLn (show exprs)
-         --let tc = Lean.typechecker env
-         --let importType = importExpr sc env tys . Lean.inferType tc
-         ts <- mapM (importExpr sc env tys) (Lean.toList exprs)
-         --argTys <- lift $ mapM (scTypeOf' sc tys) ts
-         --resTy <- importType expr
-         --funTy <- lift $ scFunAll sc argTys resTy
-         --f <- lift $ scFreshGlobal sc (Lean.macroDefToString mdef) funTy
-         --lift $ scApplyAll sc f ts
-         let ident = mkIdent preludeName (Lean.macroDefToString mdef)
-         lift $ scCtorApp sc ident ts
+      do let name = Lean.macroDefToString mdef
+         case Map.lookup name macros of
+           Just m ->
+             do args <- mapM (importExpr sc env tys) (Lean.toList exprs)
+                lift $ m sc tys args
+           Nothing ->
+             do lift $ putStrLn $ "Unknown Macro " ++ show mdef
+                lift $ putStrLn (show exprs)
+                --let tc = Lean.typechecker env
+                --let importType = importExpr sc env tys . Lean.inferType tc
+                ts <- mapM (importExpr sc env tys) (Lean.toList exprs)
+                --argTys <- lift $ mapM (scTypeOf' sc tys) ts
+                --resTy <- importType expr
+                --funTy <- lift $ scFunAll sc argTys resTy
+                --f <- lift $ scFreshGlobal sc (Lean.macroDefToString mdef) funTy
+                --lift $ scApplyAll sc f ts
+                let ident = mkIdent preludeName (Lean.macroDefToString mdef)
+                lift $ scCtorApp sc ident ts
   where
     unimplemented msg =
       fail $ unwords ["importExpr: Unimplemented", msg, Lean.exprToString expr]
+
+--------------------------------------------------------------------------------
+-- Globals
+
+globals :: SharedContext -> Map Lean.Name (IO Term)
+globals sc =
+  Map.fromList
+  [ (parseName "has_add"       , scGlobalDef sc "Lean.HasAdd")
+  , (parseName "has_add.mk"    , scGlobalDef sc "Lean.mkHasAdd")
+  , (parseName "has_one"       , scGlobalDef sc "Lean.HasOne")
+  , (parseName "has_one.mk"    , scGlobalDef sc "Lean.mkHasOne")
+  , (parseName "has_zero"      , scGlobalDef sc "Lean.HasZero")
+  , (parseName "has_zero.mk"   , scGlobalDef sc "Lean.mkHasZero")
+  , (parseName "list"          , scGlobalDef sc "Lean.list")
+  , (parseName "list.cons"     , scGlobalDef sc "Lean.cons")
+  , (parseName "list.nil"      , scGlobalDef sc "Lean.nil")
+  , (parseName "list.rec"      , scGlobalDef sc "Lean.recList")
+  , (parseName "nat"           , scNatType sc)
+  , (parseName "nat.rec"       , scGlobalDef sc "Lean.recNat")
+  , (parseName "nat.succ"      , scGlobalDef sc "Lean.succ")
+  , (parseName "nat.zero"      , scCtorApp sc "Prelude.Zero" [])
+  , (parseName "poly_unit"     , scGlobalDef sc "Lean.unit")
+  , (parseName "poly_unit.star", scGlobalDef sc "Lean.mkUnit")
+  , (parseName "prod"          , scGlobalDef sc "Lean.Prod")
+  , (parseName "prod.mk"       , scGlobalDef sc "Lean.mkProd")
+  ]
+
+--------------------------------------------------------------------------------
+-- Macros
+
+type Macro = SharedContext -> [Term] -> [Term] -> IO Term
+
+macros :: Map String Macro
+macros =
+  Map.fromList
+  [ ("has_add.add", has_add_add)
+  , ("has_one.one", has_one_one)
+  , ("has_zero.zero", has_zero_zero)
+  , ("prod.fst", prod_fst)
+  ]
+
+has_add_add :: Macro
+has_add_add sc tys args =
+  do x <- (pure <: emptyl) args
+     tx <- scTypeOf' sc tys x
+     a <- (isGlobalDef "Lean.HasAdd" @> pure) tx
+     scGlobalApply sc "Lean.addHasAdd" [a, x]
+
+has_one_one :: Macro
+has_one_one sc tys args =
+  do x <- (pure <: emptyl) args
+     tx <- scTypeOf' sc tys x
+     a <- (isGlobalDef "Lean.HasOne" @> pure) tx
+     scGlobalApply sc "Lean.oneHasOne" [a, x]
+
+has_zero_zero :: Macro
+has_zero_zero sc tys args =
+  do x <- (pure <: emptyl) args
+     tx <- scTypeOf' sc tys x
+     a <- (isGlobalDef "Lean.HasZero" @> pure) tx
+     scGlobalApply sc "Lean.zeroHasZero" [a, x]
+
+prod_fst :: Macro
+prod_fst sc tys args =
+  do x <- (pure <: emptyl) args
+     tx <- scTypeOf' sc tys x
+     (a :*: b) <- (isGlobalDef "Lean.Prod" @> pure <@> pure) tx
+     scGlobalApply sc "Lean.fstProd" [a, b, x]

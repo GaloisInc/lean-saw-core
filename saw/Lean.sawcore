@@ -1,0 +1,101 @@
+--------------------------------------------------------------------------------
+-- Lean primitives for SAWCore
+
+module Lean where
+
+import Prelude;
+
+--------------------------------------------------------------------------------
+-- Lists
+
+data List :: sort 0 -> sort 0 where {
+    Nil  :: (t :: sort 0) -> List t;
+    Cons :: (t :: sort 0) -> t -> List t -> List t;
+  }
+
+list :: sort 0 -> sort 0;
+list t = List t;
+
+nil :: (t :: sort 0) -> list t;
+nil t = Nil t;
+
+cons :: (t :: sort 0) -> t -> list t -> list t;
+cons t x xs = Cons t x xs;
+
+recList ::
+  (t :: sort 0)
+  -> (p :: list t -> sort 0)
+  -> p (Nil t)
+  -> ((a :: t) -> (a' :: list t) -> p a' -> p (Cons t a a'))
+  -> (n :: list t)
+  -> p n;
+recList t p z f (Nil _) = z;
+recList t p z f (Cons _ x xs) = f x xs (recList t p z f xs);
+
+--------------------------------------------------------------------------------
+-- Unit
+
+unit :: sort 0;
+unit = TUnit;
+
+mkUnit :: unit;
+mkUnit = Unit;
+
+--------------------------------------------------------------------------------
+-- Pairs
+
+Prod :: sort 0 -> sort 0 -> sort 0;
+Prod a b = #(a, b);
+
+mkProd :: (a :: sort 0) -> (b :: sort 0) -> a -> b -> Prod a b;
+mkProd a b x y = (x, y);
+
+fstProd :: (a b :: sort 0) -> Prod a b -> a;
+fstProd a b x = x.1;
+
+sndProd :: (a b :: sort 0) -> Prod a b -> b;
+sndProd a b x = x.2;
+
+--------------------------------------------------------------------------------
+-- Nat
+
+nat :: sort 0;
+nat = Nat;
+
+succ :: Nat -> Nat;
+succ n = Succ n;
+
+recNat ::
+  (p :: Nat -> sort 0)
+  -> p Zero
+  -> ((a :: Nat) -> p a -> p (Succ a))
+  -> (n :: Nat) -> p n;
+recNat p z s Zero = z;
+recNat p z s (Succ n) = s n (recNat p z s n);
+
+--------------------------------------------------------------------------------
+-- Type class dictionaries
+
+HasZero :: sort 0 -> sort 0;
+HasZero t = #{ zero :: t };
+
+zeroHasZero :: (t :: sort 0) -> HasZero t -> t;
+zeroHasZero t x = x.zero;
+
+HasAdd :: sort 0 -> sort 0;
+HasAdd t = #{ add :: t -> t -> t };
+
+mkHasAdd :: (a :: sort 0) -> (a -> a -> a) -> HasAdd a;
+mkHasAdd t f = { add = f };
+
+addHasAdd :: (t :: sort 0) -> HasAdd t -> t -> t -> t;
+addHasAdd t x = x.add;
+
+HasOne :: sort 0 -> sort 0;
+HasOne t = #{ one :: t };
+
+mkHasOne :: (a :: sort 0) -> a -> HasOne a;
+mkHasOne t x = { one = x };
+
+oneHasOne :: (t :: sort 0) -> HasOne t -> t;
+oneHasOne t x = x.one;

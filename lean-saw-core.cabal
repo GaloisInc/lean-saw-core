@@ -14,7 +14,7 @@ Description:
   be analyzed by various backend proof systems.
 
 extra-source-files:
-    -- saw/Lean.sawcore
+    saw/Lean.sawcore
 
 library
   build-depends:
@@ -35,4 +35,5 @@ library
   hs-source-dirs: src
   exposed-modules:
      Verifier.SAW.Lean
+     Verifier.SAW.Lean.Prelude
   GHC-options: -Wall -Werror
