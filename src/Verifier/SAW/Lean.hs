@@ -164,24 +164,38 @@ importExpr sc env tys expr = do
 globals :: SharedContext -> Map Lean.Name (IO Term)
 globals sc =
   Map.fromList
-  [ (parseName "has_add"       , scGlobalDef sc "Lean.HasAdd")
-  , (parseName "has_add.mk"    , scGlobalDef sc "Lean.mkHasAdd")
-  , (parseName "has_one"       , scGlobalDef sc "Lean.HasOne")
-  , (parseName "has_one.mk"    , scGlobalDef sc "Lean.mkHasOne")
-  , (parseName "has_zero"      , scGlobalDef sc "Lean.HasZero")
-  , (parseName "has_zero.mk"   , scGlobalDef sc "Lean.mkHasZero")
-  , (parseName "list"          , scGlobalDef sc "Lean.list")
-  , (parseName "list.cons"     , scGlobalDef sc "Lean.cons")
-  , (parseName "list.nil"      , scGlobalDef sc "Lean.nil")
-  , (parseName "list.rec"      , scGlobalDef sc "Lean.recList")
-  , (parseName "nat"           , scNatType sc)
-  , (parseName "nat.rec"       , scGlobalDef sc "Lean.recNat")
-  , (parseName "nat.succ"      , scGlobalDef sc "Lean.succ")
-  , (parseName "nat.zero"      , scCtorApp sc "Prelude.Zero" [])
-  , (parseName "poly_unit"     , scGlobalDef sc "Lean.unit")
-  , (parseName "poly_unit.star", scGlobalDef sc "Lean.mkUnit")
-  , (parseName "prod"          , scGlobalDef sc "Lean.Prod")
-  , (parseName "prod.mk"       , scGlobalDef sc "Lean.mkProd")
+  [ (parseName "bool"                 , scBoolType sc)
+  , (parseName "bool.ff"              , scBool sc False)
+  , (parseName "bool.tt"              , scBool sc True)
+  , (parseName "decidable"            , scGlobalDef sc "Lean.decidable")
+  , (parseName "decidable.is_false"   , scGlobalDef sc "Lean.is_false")
+  , (parseName "decidable.is_true"    , scGlobalDef sc "Lean.is_true")
+  , (parseName "decidable.rec"        , scGlobalDef sc "Lean.decidable_rec")
+  , (parseName "eq"                   , scGlobalDef sc "Lean.equal")
+  , (parseName "eq.refl"              , scGlobalDef sc "Lean.eq_refl")
+  , (parseName "eq.rec"               , scGlobalDef sc "Lean.eq_rec")
+  , (parseName "false"                , scGlobalDef sc "Lean.false")
+  , (parseName "false.rec"            , scGlobalDef sc "Lean.false_rec")
+  , (parseName "has_add"              , scGlobalDef sc "Lean.has_add")
+  , (parseName "has_add.mk"           , scGlobalDef sc "Lean.has_add_mk")
+  , (parseName "has_one"              , scGlobalDef sc "Lean.has_one")
+  , (parseName "has_one.mk"           , scGlobalDef sc "Lean.has_one_mk")
+  , (parseName "has_zero"             , scGlobalDef sc "Lean.has_zero")
+  , (parseName "has_zero.mk"          , scGlobalDef sc "Lean.has_zero_mk")
+  , (parseName "list"                 , scGlobalDef sc "Lean.list")
+  , (parseName "list.cons"            , scGlobalDef sc "Lean.list_cons")
+  , (parseName "list.nil"             , scGlobalDef sc "Lean.list_nil")
+  , (parseName "list.rec"             , scGlobalDef sc "Lean.list_rec")
+  , (parseName "nat"                  , scNatType sc)
+  , (parseName "nat.no_confusion_type", scGlobalDef sc "Lean.nat_no_confusion_type")
+  , (parseName "nat.rec"              , scGlobalDef sc "Lean.nat_rec")
+  , (parseName "nat.succ"             , scGlobalDef sc "Lean.succ")
+  , (parseName "nat.zero"             , scCtorApp sc "Prelude.Zero" [])
+  , (parseName "not"                  , scGlobalDef sc "Lean.notp")
+  , (parseName "poly_unit"            , scUnitType sc)
+  , (parseName "poly_unit.star"       , scUnitValue sc)
+  , (parseName "prod"                 , scGlobalDef sc "Lean.prod")
+  , (parseName "prod.mk"              , scGlobalDef sc "Lean.prod_mk")
   ]
 
 --------------------------------------------------------------------------------
@@ -202,26 +216,26 @@ has_add_add :: Macro
 has_add_add sc tys args =
   do x <- (pure <: emptyl) args
      tx <- scTypeOf' sc tys x
-     a <- (isGlobalDef "Lean.HasAdd" @> pure) tx
-     scGlobalApply sc "Lean.addHasAdd" [a, x]
+     a <- (isGlobalDef "Lean.has_add" @> pure) tx
+     scGlobalApply sc "Lean.has_add_add" [a, x]
 
 has_one_one :: Macro
 has_one_one sc tys args =
   do x <- (pure <: emptyl) args
      tx <- scTypeOf' sc tys x
-     a <- (isGlobalDef "Lean.HasOne" @> pure) tx
-     scGlobalApply sc "Lean.oneHasOne" [a, x]
+     a <- (isGlobalDef "Lean.has_one" @> pure) tx
+     scGlobalApply sc "Lean.has_one_one" [a, x]
 
 has_zero_zero :: Macro
 has_zero_zero sc tys args =
   do x <- (pure <: emptyl) args
      tx <- scTypeOf' sc tys x
-     a <- (isGlobalDef "Lean.HasZero" @> pure) tx
-     scGlobalApply sc "Lean.zeroHasZero" [a, x]
+     a <- (isGlobalDef "Lean.has_zero" @> pure) tx
+     scGlobalApply sc "Lean.has_zero_zero" [a, x]
 
 prod_fst :: Macro
 prod_fst sc tys args =
   do x <- (pure <: emptyl) args
      tx <- scTypeOf' sc tys x
-     (a :*: b) <- (isGlobalDef "Lean.Prod" @> pure <@> pure) tx
-     scGlobalApply sc "Lean.fstProd" [a, b, x]
+     (a :*: b) <- (isGlobalDef "Lean.prod" @> pure <@> pure) tx
+     scGlobalApply sc "Lean.prod_fst" [a, b, x]

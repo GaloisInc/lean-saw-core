@@ -6,6 +6,69 @@ module Lean where
 import Prelude;
 
 --------------------------------------------------------------------------------
+-- Equality
+
+data Equal :: (t :: sort 0) -> t -> t -> sort 0 where {
+    Reflexivity :: (t :: sort 0) -> (x :: t) -> Equal t x x;
+  }
+
+equal :: (t :: sort 0) -> t -> t -> sort 0;
+equal t x y = Equal t x y;
+
+eq_refl :: (t :: sort 0) -> (x :: t) -> equal t x x;
+eq_refl t x = Reflexivity t x;
+
+eq_rec ::
+  (t :: sort 0)
+  -> (a :: t)
+  -> (c :: t -> sort 0)
+  -> c a
+  -> (a' :: t)
+  -> equal t a a'
+  -> c a';
+eq_rec _ _ _ p _ (Reflexivity _ x) = p;
+
+--------------------------------------------------------------------------------
+-- Decidable Propositions
+
+-- FIXME: this gives a parse error
+-- data false :: sort 0 where { }
+
+false :: sort 0;
+false = Equal Bool True False;
+
+false_rec :: (p :: sort 0) -> false -> p;
+false_rec p contra =
+  eq_rec Bool True (\(x::Bool) -> ite (sort 0) x TUnit p) Unit False contra;
+
+notp :: sort 0 -> sort 0;
+notp t = t -> false;
+
+data Decidable :: sort 0 -> sort 0 where {
+    IsFalse :: (p :: sort 0) -> notp p -> Decidable p;
+    IsTrue :: (p :: sort 0) -> p -> Decidable p;
+  }
+
+decidable :: sort 0 -> sort 0;
+decidable p = Decidable p;
+
+is_false :: (p :: sort 0) -> notp p -> decidable p;
+is_false p x = IsFalse p x;
+
+is_true :: (p :: sort 0) -> p -> decidable p;
+is_true p x = IsTrue p x;
+
+decidable_rec ::
+  (p :: sort 0)
+  -> (c :: decidable p -> sort 0)
+  -> ((a :: notp p) -> c (is_false p a))
+  -> ((a :: p) -> c (is_true p a))
+  -> (n :: decidable p)
+  -> c n;
+decidable_rec p c f t (IsFalse _ a) = f a;
+decidable_rec p c f t (IsTrue _ a) = t a;
+
+--------------------------------------------------------------------------------
 -- Lists
 
 data List :: sort 0 -> sort 0 where {
@@ -16,45 +79,36 @@ data List :: sort 0 -> sort 0 where {
 list :: sort 0 -> sort 0;
 list t = List t;
 
-nil :: (t :: sort 0) -> list t;
-nil t = Nil t;
+list_nil :: (t :: sort 0) -> list t;
+list_nil t = Nil t;
 
-cons :: (t :: sort 0) -> t -> list t -> list t;
-cons t x xs = Cons t x xs;
+list_cons :: (t :: sort 0) -> t -> list t -> list t;
+list_cons t x xs = Cons t x xs;
 
-recList ::
+list_rec ::
   (t :: sort 0)
-  -> (p :: list t -> sort 0)
-  -> p (Nil t)
-  -> ((a :: t) -> (a' :: list t) -> p a' -> p (Cons t a a'))
+  -> (p :: list t -> sort 1)
+  -> p (list_nil t)
+  -> ((a :: t) -> (a' :: list t) -> p a' -> p (list_cons t a a'))
   -> (n :: list t)
   -> p n;
-recList t p z f (Nil _) = z;
-recList t p z f (Cons _ x xs) = f x xs (recList t p z f xs);
-
---------------------------------------------------------------------------------
--- Unit
-
-unit :: sort 0;
-unit = TUnit;
-
-mkUnit :: unit;
-mkUnit = Unit;
+list_rec t p z f (Nil _) = z;
+list_rec t p z f (Cons _ x xs) = f x xs (list_rec t p z f xs);
 
 --------------------------------------------------------------------------------
 -- Pairs
 
-Prod :: sort 0 -> sort 0 -> sort 0;
-Prod a b = #(a, b);
+prod :: sort 0 -> sort 0 -> sort 0;
+prod a b = #(a, b);
 
-mkProd :: (a :: sort 0) -> (b :: sort 0) -> a -> b -> Prod a b;
-mkProd a b x y = (x, y);
+prod_mk :: (a :: sort 0) -> (b :: sort 0) -> a -> b -> prod a b;
+prod_mk a b x y = (x, y);
 
-fstProd :: (a b :: sort 0) -> Prod a b -> a;
-fstProd a b x = x.1;
+prod_fst :: (a b :: sort 0) -> prod a b -> a;
+prod_fst a b x = x.1;
 
-sndProd :: (a b :: sort 0) -> Prod a b -> b;
-sndProd a b x = x.2;
+prod_snd :: (a b :: sort 0) -> prod a b -> b;
+prod_snd a b x = x.2;
 
 --------------------------------------------------------------------------------
 -- Nat
@@ -65,37 +119,65 @@ nat = Nat;
 succ :: Nat -> Nat;
 succ n = Succ n;
 
-recNat ::
-  (p :: Nat -> sort 0)
+nat_rec ::
+  (p :: Nat -> sort 1)
   -> p Zero
   -> ((a :: Nat) -> p a -> p (Succ a))
   -> (n :: Nat) -> p n;
-recNat p z s Zero = z;
-recNat p z s (Succ n) = s n (recNat p z s n);
+nat_rec p z s Zero = z;
+nat_rec p z s (Succ n) = s n (nat_rec p z s n);
+
+nat_cases_on ::
+  (c :: Nat -> sort 1)
+  -> (n :: Nat)
+  -> c Zero
+  -> ((a :: Nat) -> c (succ a))
+  -> c n;
+nat_cases_on c n z s = nat_rec c z (\(a::Nat) -> \(_::c a) -> s a) n;
+-- nat_cases_on c Zero z s = z;
+-- nat_cases_on c (Succ n) z s = s n;
+
+nat_no_confusion_type :: sort 0 -> Nat -> Nat -> sort 0;
+nat_no_confusion_type =
+  \ (t::sort 0) ->
+  \ (v1::Nat) ->
+  \ (v2::Nat) ->
+    nat_cases_on (\(_::Nat) -> sort 0) v1
+      (nat_cases_on (\(_::Nat) -> sort 0) v2 (t -> t) (\(_::Nat) -> t))
+      (\(a::Nat) ->
+        nat_cases_on (\(_::Nat) -> sort 0) v2 t
+          (\ (a'::Nat) -> (equal Nat a a' -> t) -> t));
+-- nat_no_confusion_type t Zero Zero = (t -> t);
+-- nat_no_confusion_type t Zero (Succ n) = t;
+-- nat_no_confusion_type t (Succ m) Zero = t;
+-- nat_no_confusion_type t (Succ m) (Succ n) = ((equal Nat m n -> t) -> t);
 
 --------------------------------------------------------------------------------
 -- Type class dictionaries
 
-HasZero :: sort 0 -> sort 0;
-HasZero t = #{ zero :: t };
+has_zero :: sort 0 -> sort 0;
+has_zero t = #{ zero :: t };
 
-zeroHasZero :: (t :: sort 0) -> HasZero t -> t;
-zeroHasZero t x = x.zero;
+has_zero_mk :: (a :: sort 0) -> a -> has_zero a;
+has_zero_mk t x = { zero = x };
 
-HasAdd :: sort 0 -> sort 0;
-HasAdd t = #{ add :: t -> t -> t };
+has_zero_zero :: (t :: sort 0) -> has_zero t -> t;
+has_zero_zero t x = x.zero;
 
-mkHasAdd :: (a :: sort 0) -> (a -> a -> a) -> HasAdd a;
-mkHasAdd t f = { add = f };
+has_add :: sort 0 -> sort 0;
+has_add t = #{ add :: t -> t -> t };
 
-addHasAdd :: (t :: sort 0) -> HasAdd t -> t -> t -> t;
-addHasAdd t x = x.add;
+has_add_mk :: (a :: sort 0) -> (a -> a -> a) -> has_add a;
+has_add_mk t f = { add = f };
 
-HasOne :: sort 0 -> sort 0;
-HasOne t = #{ one :: t };
+has_add_add :: (t :: sort 0) -> has_add t -> (t -> t -> t);
+has_add_add t x = x.add;
 
-mkHasOne :: (a :: sort 0) -> a -> HasOne a;
-mkHasOne t x = { one = x };
+has_one :: sort 0 -> sort 0;
+has_one t = #{ one :: t };
 
-oneHasOne :: (t :: sort 0) -> HasOne t -> t;
-oneHasOne t x = x.one;
+has_one_mk :: (a :: sort 0) -> a -> has_one a;
+has_one_mk t x = { one = x };
+
+has_one_one :: (t :: sort 0) -> has_one t -> t;
+has_one_one t x = x.one;
