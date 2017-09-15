@@ -25,6 +25,7 @@ import Control.Monad.State
 import Verifier.SAW.Recognizer
 import Verifier.SAW.SharedTerm
 --import Verifier.SAW.Constant (scConstant)
+import Verifier.SAW.SCTypeCheck (scTypeCheck, prettyTCError)
 import Verifier.SAW.TypedAST (preludeName, mkSort)
 
 import qualified Language.Lean as Lean
@@ -47,6 +48,14 @@ lean_extract sc modname name =
      t <- evalStateT (importDecl sc env [] decl) table
      putStrLn "Result term:"
      putStrLn (scPrettyTerm defaultPPOpts t)
+     rty <- scTypeCheck sc t
+     case rty of
+       Left e ->
+         do putStrLn "TYPE ERROR:"
+            mapM_ putStrLn (prettyTCError e)
+       Right ty ->
+         do putStrLn "Result type:"
+            putStrLn (scPrettyTerm defaultPPOpts ty)
      return t
 
 parseName :: String -> Lean.Name
@@ -77,7 +86,7 @@ importDecl sc env tys decl =
   case declBody decl of
     Nothing ->
       do t <- importExpr sc env tys (Lean.declType decl)
-         lift $ putStrLn $ "Unknown Global " ++ show (Lean.nameToString name)
+         lift $ putStrLn $ "WARNING: Unknown Global " ++ show (Lean.nameToString name)
          lift $ putStrLn $ " : " ++ (scPrettyTerm defaultPPOpts t)
          t' <- lift $ scFreshGlobal sc (Lean.nameToString name) t
          modify (Map.insert name t')
@@ -86,11 +95,18 @@ importDecl sc env tys decl =
       do t <- importExpr sc env tys e
          let tc = Lean.typechecker env
          ty <- importExpr sc env tys (Lean.inferType tc e)
-         --t' <- lift $ scConstant sc (Lean.nameToString name) t
          lift $ putStrLn $ "Defining Constant " ++ show (Lean.nameToString name)
+         rty <- lift $ scTypeCheck sc t
+         case rty of
+           Left err ->
+             do lift $ putStrLn "TYPE ERROR:"
+                lift $ mapM_ putStrLn (prettyTCError err)
+           Right _ ->
+             do return ()
          lift $ putStrLn $ " : " ++ (scPrettyTerm defaultPPOpts ty)
          lift $ putStrLn $ " = " ++ (scPrettyTerm defaultPPOpts t)
          t' <- lift $ scTermF sc (Constant (Lean.nameToString name) t ty)
+         --t' <- lift $ scConstant sc (Lean.nameToString name) t
          modify (Map.insert name t')
          return t'
   where
@@ -142,7 +158,7 @@ importExpr sc env tys expr = do
              do args <- mapM (importExpr sc env tys) (Lean.toList exprs)
                 lift $ m sc tys args
            Nothing ->
-             do lift $ putStrLn $ "Unknown Macro " ++ show mdef
+             do lift $ putStrLn $ "WARNING: Unknown Macro " ++ show mdef
                 lift $ putStrLn (show exprs)
                 --let tc = Lean.typechecker env
                 --let importType = importExpr sc env tys . Lean.inferType tc
